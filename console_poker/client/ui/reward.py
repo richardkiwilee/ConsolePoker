@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+import logging
+
 from textual.app import ComposeResult
 from textual.screen import Screen
 from textual.widgets import Header, Footer, DataTable, Label, Button, Static
 from textual.containers import Horizontal, Vertical
+
+
+logger = logging.getLogger(__name__)
 
 
 class RewardScreen(Screen):
@@ -43,11 +48,13 @@ class RewardScreen(Screen):
         yield Footer()
 
     def on_mount(self) -> None:
+        logger.info("RewardScreen.on_mount picks_allowed=%s", self.picks_allowed)
         table = self.query_one("#reward_table", DataTable)
         table.add_columns("名称", "类型", "描述")
         self.client.on("reward", self._on_reward)
 
     def _on_reward(self, evt) -> None:
+        logger.info("RewardScreen._on_reward items=%s picks_allowed=%s", len(evt.state.items), evt.state.picks_allowed)
         self._items = list(evt.state.items)
         self.picks_allowed = evt.state.picks_allowed
         self._picks_left = self.picks_allowed
@@ -71,14 +78,17 @@ class RewardScreen(Screen):
         if not self._items or self._picks_left <= 0:
             return
         item = self._items[self._idx]
+        logger.info("RewardScreen.action_select item_id=%s picks_left_before=%s", item.item_id, self._picks_left)
         self.client.send_buy(item.item_id)
         self._picks_left -= 1
         self._refresh_ui()
         if self._picks_left <= 0:
+            logger.info("RewardScreen.action_select sending confirm_result")
             self.client.send_confirm_result()
             self.app.pop_screen()
 
     def action_skip(self) -> None:
+        logger.info("RewardScreen.action_skip sending confirm_result")
         self.client.send_confirm_result()
         self.app.pop_screen()
 

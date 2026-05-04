@@ -17,6 +17,8 @@ import threading
 # Ensure the project root is on the path
 sys.path.insert(0, os.path.dirname(__file__))
 
+from console_poker.logging_utils import configure_server_logging
+
 
 def _load_template(name: str) -> dict:
     base = os.path.join(os.path.dirname(__file__), "console_poker", "data")
@@ -30,8 +32,9 @@ def _load_template(name: str) -> dict:
 def cmd_server(args) -> None:
     """Run a standalone server."""
     import logging
-    logging.basicConfig(level=logging.INFO)
+    log_path = configure_server_logging()
     template = _load_template(args.template)
+    logging.getLogger(__name__).info("Server logging to %s", log_path)
     from console_poker.server.service import serve
     serve(host=args.host, port=args.port, template=template, max_players=args.max_players)
 
@@ -47,8 +50,9 @@ def cmd_client(args) -> None:
 def cmd_host(args) -> None:
     """Run as host: embed server + launch client."""
     import logging
-    logging.basicConfig(level=logging.INFO)
+    log_path = configure_server_logging()
     template = _load_template(args.template)
+    logging.getLogger(__name__).info("Host server logging to %s", log_path)
 
     # Start embedded server in background thread
     from console_poker.server.service import serve

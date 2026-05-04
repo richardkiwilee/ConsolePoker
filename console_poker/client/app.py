@@ -5,6 +5,7 @@ from __future__ import annotations
 import sys
 import os
 import threading
+import logging
 
 from textual.app import App, ComposeResult
 from textual.screen import Screen
@@ -14,11 +15,15 @@ from textual.containers import Vertical, Center
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from .client import PokerClient
+from ..logging_utils import configure_client_logging
 from .ui.lobby import LobbyScreen
 from .ui.class_select import ClassSelectScreen
 from .ui.battle import BattleScreen
 from .ui.shop import ShopScreen
 from .ui.reward import RewardScreen
+
+
+logger = logging.getLogger(__name__)
 
 
 class ConnectScreen(Screen):
@@ -137,6 +142,10 @@ class PokerApp(App):
         host = parts[0] if len(parts) == 2 else addr
         port = int(parts[1]) if len(parts) == 2 and parts[1].isdigit() else 50051
 
+        log_path = configure_client_logging(name)
+        logger.info("Client logging to %s", log_path)
+        logger.info("connect_and_join start host=%s port=%s name=%s", host, port, name)
+
         self.client = PokerClient(host=host, port=port)
 
         # Wire up server events before connecting
@@ -151,6 +160,7 @@ class PokerApp(App):
 
         ok = self.client.connect(name=name)
         if not ok:
+            logger.warning("connect_and_join failed for name=%s", name)
             def on_fail():
                 self.notify("连接失败", severity="error")
                 try:
@@ -163,6 +173,7 @@ class PokerApp(App):
             return
 
         def navigate():
+            logger.info("navigate to LobbyScreen for player=%s", name)
             self.pop_screen()
             self.push_screen(LobbyScreen(self.client))
         self.call_from_thread(navigate)
@@ -172,12 +183,14 @@ class PokerApp(App):
     def _on_lobby(self, evt) -> None:
         # Cache the latest lobby state so LobbyScreen can pull it on mount
         self._last_lobby_evt = evt
+        logger.debug("_on_lobby players=%s", len(evt.players))
         def update():
             if isinstance(self.screen, LobbyScreen):
                 self.screen.refresh_from_event(evt)
         self.call_from_thread(update)
 
     def _on_class_select(self, evt) -> None:
+        logger.info("_on_class_select all_confirmed=%s confirmed=%s", evt.all_confirmed, list(evt.confirmed_ids))
         def push():
             # Only push if not already on class select
             if not isinstance(self.screen, ClassSelectScreen):
@@ -188,19 +201,23 @@ class PokerApp(App):
         self.call_from_thread(push)
 
     def _on_combat(self, evt) -> None:
+        logger.info("_on_combat current_player_id=%s round=%s", evt.state.current_player_id, evt.state.round_number)
         def push():
             if not isinstance(self.screen, BattleScreen):
                 self.push_screen(BattleScreen(self.client))
         self.call_from_thread(push)
 
     def _on_shop(self, evt) -> None:
+        logger.info("_on_shop items=%s refresh_cost=%s", len(evt.state.items), evt.state.refresh_cost)
         def push():
             if not isinstance(self.screen, ShopScreen):
                 self.push_screen(ShopScreen(self.client))
         self.call_from_thread(push)
 
     def _on_reward(self, evt) -> None:
+        logger.info("_on_reward picks_allowed=%s items=%s", evt.state.picks_allowed, len(evt.state.items))
         def push():
+            logger.debug("push RewardScreen current_screen=%s", type(self.screen).__name__)
             if not isinstance(self.screen, RewardScreen):
                 self.push_screen(RewardScreen(self.client, picks_allowed=evt.state.picks_allowed))
         self.call_from_thread(push)
@@ -228,4 +245,5 @@ class PokerApp(App):
         self.call_from_thread(show)
 
     def _on_error(self, msg) -> None:
+        logger.error("_on_error message=%s", msg)
         self.call_from_thread(lambda: self.notify(str(msg), severity="error"))

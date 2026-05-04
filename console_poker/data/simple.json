@@ -1,0 +1,8 @@
+{
+  "name": "simple",
+  "nodes": [
+    {"type": "reward", "picks": 1},
+    {"type": "shop"},
+    {"type": "combat"}
+  ]
+}

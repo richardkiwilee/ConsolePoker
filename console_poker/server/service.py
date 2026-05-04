@@ -128,6 +128,7 @@ class PokerServiceServicer(pb_grpc.PokerServiceServicer):
     ) -> Iterator[pb.ServerEvent]:
         """Bidirectional streaming — one stream per player."""
         player_id: str | None = None
+        logger.info("Play stream opened")
 
         def send_initial_state():
             # Send current lobby/game state to the newly connected player
@@ -136,6 +137,7 @@ class PokerServiceServicer(pb_grpc.PokerServiceServicer):
                 room_config="",
             ))
             if player_id and player_id in self._queues:
+                logger.debug("Sending initial state player_id=%s", player_id)
                 self._queues[player_id].put(evt)
 
         # Start a thread to handle incoming messages
@@ -143,14 +145,17 @@ class PokerServiceServicer(pb_grpc.PokerServiceServicer):
             nonlocal player_id
             try:
                 for msg in request_iterator:
+                    logger.debug("Received client msg action=%s player_id=%s", msg.action, msg.player_id)
                     if not player_id:
                         # First message must identify the player
                         player_id = msg.player_id
+                        logger.info("Play stream identified player_id=%s", player_id)
                         send_initial_state()
                     self._handle_client_message(msg)
             except Exception as e:
-                logger.warning(f"Client stream error: {e}")
+                logger.exception("Client stream error for player_id=%s", player_id)
             finally:
+                logger.info("Play incoming loop closing player_id=%s", player_id)
                 if player_id:
                     player = self._room.get_player(player_id)
                     if player:
@@ -169,12 +174,15 @@ class PokerServiceServicer(pb_grpc.PokerServiceServicer):
                 continue
             q = self._queues.get(player_id)
             if q is None:
+                logger.warning("Event queue missing for player_id=%s", player_id)
                 break
             try:
                 evt = q.get(timeout=1.0)
+                logger.debug("Yielding server event=%s player_id=%s", evt.WhichOneof("event"), player_id)
                 yield evt
             except queue.Empty:
                 continue
+        logger.info("Play stream closed player_id=%s active=%s", player_id, context.is_active())
 
     # ── Message routing ───────────────────────────────────────────────────
 

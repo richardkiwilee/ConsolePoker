@@ -61,11 +61,12 @@ class GameSession:
             return False
         player.class_id = class_id
         player.class_confirmed = True
+        all_confirmed = self.room.all_class_confirmed()
+        self.emit("class_confirmed", player_id)
         # All confirmed → start phases
-        if self.room.all_class_confirmed():
+        if all_confirmed:
             self._apply_class_effects()
             self._start_next_phase()
-        self.emit("class_confirmed", player_id)
         return True
 
     def _apply_class_effects(self) -> None:
@@ -79,28 +80,44 @@ class GameSession:
     # ── Phase engine ──────────────────────────────────────────────────────
 
     def _start_next_phase(self) -> None:
+        import logging
+        logger = logging.getLogger("console_poker.server.entities.game")
+        logger.info(f"[PHASE] _start_next_phase: index={self.phase_engine._index}, done={self.phase_engine.is_done}")
         if self.phase_engine.is_done:
+            logger.info("[PHASE] All phases done, ending game.")
             self._end_game()
             return
         self.status = GameStatus.RUNNING
         node = self.phase_engine.current
+        logger.info(f"[PHASE] Current node: {getattr(node, 'node_type', None)} config={getattr(node, 'config', None)}")
         if node is None:
+            logger.info("[PHASE] Node is None, ending game.")
             self._end_game()
             return
         if node.node_type == NodeType.COMBAT:
+            logger.info("[PHASE] Starting combat phase.")
             self._start_combat(node.config)
         elif node.node_type == NodeType.SHOP:
+            logger.info("[PHASE] Starting shop phase.")
             self._start_shop(node.config)
         elif node.node_type == NodeType.REWARD:
+            logger.info("[PHASE] Starting reward phase.")
             self._start_reward(node.config)
 
     def advance_phase(self) -> None:
+        import logging
+        logger = logging.getLogger("console_poker.server.entities.game")
+        logger.info(f"[PHASE] advance_phase called. Current index={self.phase_engine._index}")
         self.phase_engine.advance()
+        logger.info(f"[PHASE] Phase advanced. New index={self.phase_engine._index}")
         self._start_next_phase()
 
     # ── Combat ────────────────────────────────────────────────────────────
 
     def _start_combat(self, config: dict) -> None:
+        import logging
+        logger = logging.getLogger("console_poker.server.entities.game")
+        logger.info(f"[COMBAT] _start_combat called. config={config}")
         self.combat_round += 1
         # Deal hands
         hand_size = config.get("hand_size", Player.INITIAL_HAND_SIZE)
@@ -117,6 +134,7 @@ class GameSession:
             scores=scores,
             round_number=self.combat_round,
         )
+        logger.info(f"[COMBAT] CombatState created. round={self.combat_round} players={list(hands.keys())}")
         self.emit("combat_started", self.current_combat)
 
     def resolve_combat_round(self, winner_id: str) -> None:

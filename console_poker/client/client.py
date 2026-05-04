@@ -44,6 +44,7 @@ class PokerClient:
 
     def on(self, event: str, handler: Callable) -> None:
         self._handlers.setdefault(event, []).append(handler)
+        logger.debug("Registered handler event=%s total=%s", event, len(self._handlers[event]))
 
     def _dispatch(self, event: str, *args, **kwargs) -> None:
         for fn in self._handlers.get(event, []):
@@ -55,6 +56,7 @@ class PokerClient:
     # ── Connection ────────────────────────────────────────────────────────
 
     def connect(self, name: str, player_id: str = "") -> bool:
+        logger.info("Connect start target=%s:%s name=%s player_id=%s", self.host, self.port, name, player_id)
         self._channel = grpc.insecure_channel(f"{self.host}:{self.port}")
         self._stub = pb_grpc.PokerServiceStub(self._channel)
         self.player_name = name
@@ -62,7 +64,7 @@ class PokerClient:
         try:
             resp = self._stub.Join(pb.JoinRequest(name=name, player_id=player_id))
         except grpc.RpcError as e:
-            logger.error(f"Join failed: {e}")
+            logger.exception("Join failed")
             return False
 
         if not resp.success:
@@ -72,10 +74,12 @@ class PokerClient:
 
         self.player_id = resp.player_id
         self._connected = True
+        logger.info("Join succeeded player_id=%s", self.player_id)
         self._start_stream()
         return True
 
     def disconnect(self) -> None:
+        logger.info("Disconnect called player_id=%s", self.player_id)
         self._connected = False
         if self._channel:
             self._channel.close()
@@ -84,31 +88,42 @@ class PokerClient:
 
     def _outgoing_generator(self):
         """Yield outgoing ClientMessage objects from the send queue."""
+        logger.debug("_outgoing_generator started player_id=%s", self.player_id)
         # First message identifies the player
         yield pb.ClientMessage(player_id=self.player_id, action=pb.PlayerAction.ACTION_NONE)
         while self._connected:
             try:
                 msg = self._send_queue.get(timeout=1.0)
+                logger.debug("_outgoing_generator got action=%s player_id=%s", msg.action, msg.player_id)
                 yield msg
             except queue.Empty:
                 continue
+        logger.debug("_outgoing_generator exited player_id=%s", self.player_id)
 
     def _start_stream(self) -> None:
         def run():
+            logger.info("_start_stream.run begin player_id=%s", self.player_id)
             try:
                 for event in self._stub.Play(self._outgoing_generator()):
+                    logger.debug("_start_stream got event=%s", event.WhichOneof("event"))
                     self._handle_server_event(event)
             except grpc.RpcError as e:
+                logger.exception("Stream RpcError")
                 if self._connected:
                     logger.warning(f"Stream error: {e}")
                     self._dispatch("disconnected")
-            self._connected = False
+            except Exception as e:
+                logger.exception("Stream fatal error")
+            finally:
+                logger.info("_start_stream.run end player_id=%s", self.player_id)
+                self._connected = False
 
         self._stream_thread = threading.Thread(target=run, daemon=True)
         self._stream_thread.start()
 
     def _handle_server_event(self, event: pb.ServerEvent) -> None:
         which = event.WhichOneof("event")
+        logger.debug("Dispatching server event=%s", which)
         if which == "lobby":
             self._dispatch("lobby", event.lobby)
         elif which == "class_select":
@@ -132,7 +147,10 @@ class PokerClient:
 
     def _send(self, msg: pb.ClientMessage) -> None:
         if self._connected:
+            logger.debug("Queueing action=%s player_id=%s", msg.action, msg.player_id)
             self._send_queue.put(msg)
+        else:
+            logger.warning("Dropping action=%s because client is not connected", msg.action)
 
     def send_ready(self) -> None:
         self._send(pb.ClientMessage(

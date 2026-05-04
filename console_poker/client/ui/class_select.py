@@ -86,3 +86,4 @@ class ClassSelectScreen(Screen):
 
     def _all_confirmed(self) -> None:
         self.app.notify("职业选择完成，游戏即将开始！")
+        self.app.pop_screen()
