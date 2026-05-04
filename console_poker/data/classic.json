@@ -1,0 +1,11 @@
+{
+  "name": "classic",
+  "description": "经典模板：3轮对战 + 2次商店 + 1次奖励",
+  "nodes": [
+    {"type": "combat"},
+    {"type": "shop"},
+    {"type": "combat"},
+    {"type": "reward", "picks": 1},
+    {"type": "combat"}
+  ]
+}

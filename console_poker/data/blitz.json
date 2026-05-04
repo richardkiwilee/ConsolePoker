@@ -1,0 +1,9 @@
+{
+  "name": "blitz",
+  "description": "快节奏模板：2轮对战 + 1次商店",
+  "nodes": [
+    {"type": "combat"},
+    {"type": "shop"},
+    {"type": "combat"}
+  ]
+}

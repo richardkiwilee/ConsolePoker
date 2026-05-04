@@ -1,0 +1,272 @@
+syntax = "proto3";
+
+package poker;
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
+enum Suit {
+  SUIT_NONE    = 0;
+  SPADE        = 1;
+  HEART        = 2;
+  DIAMOND      = 3;
+  CLUB         = 4;
+}
+
+enum Rank {
+  RANK_NONE   = 0;
+  TWO         = 2;
+  THREE       = 3;
+  FOUR        = 4;
+  FIVE        = 5;
+  SIX         = 6;
+  SEVEN       = 7;
+  EIGHT       = 8;
+  NINE        = 9;
+  TEN         = 10;
+  JACK        = 11;
+  QUEEN       = 12;
+  KING        = 13;
+  ACE         = 14;
+  SMALL_JOKER = 15;
+  BIG_JOKER   = 16;
+}
+
+enum HandType {
+  HAND_UNKNOWN          = 0;
+  HAND_SINGLE           = 1;
+  HAND_PAIR             = 2;
+  HAND_TRIPLE           = 3;
+  HAND_FULL_HOUSE       = 4;
+  HAND_STRAIGHT         = 5;
+  HAND_CONSECUTIVE_PAIR = 6;
+  HAND_CONSECUTIVE_TRIP = 7;
+  HAND_BOMB             = 8;
+  HAND_NUKE             = 9;
+}
+
+enum PhaseType {
+  PHASE_UNKNOWN = 0;
+  PHASE_COMBAT  = 1;
+  PHASE_SHOP    = 2;
+  PHASE_REWARD  = 3;
+}
+
+enum GameState {
+  STATE_LOBBY          = 0;
+  STATE_CLASS_SELECT   = 1;
+  STATE_PHASE          = 2;
+  STATE_GAME_OVER      = 3;
+}
+
+enum PlayerAction {
+  ACTION_NONE      = 0;
+  ACTION_READY     = 1;
+  ACTION_PLAY_HAND = 2;
+  ACTION_PASS      = 3;
+  ACTION_USE_SKILL = 4;
+  ACTION_BUY       = 5;
+  ACTION_SELL      = 6;
+  ACTION_REFRESH   = 7;
+  ACTION_RESERVE   = 8;
+  ACTION_SELECT_CLASS = 9;
+  ACTION_CONFIRM_RESULT = 10;
+}
+
+// ─── Messages ─────────────────────────────────────────────────────────────────
+
+message CardProto {
+  Rank rank       = 1;
+  Suit suit       = 2;
+  repeated string enchantments = 3;  // enchantment IDs
+  string card_id  = 4;               // unique instance id
+}
+
+message HandProto {
+  HandType type        = 1;
+  repeated CardProto cards = 2;
+  Rank key_rank        = 3;  // rank used for comparison
+}
+
+message SkillProto {
+  string skill_id    = 1;
+  string name        = 2;
+  string description = 3;
+  int32  mana_cost   = 4;
+  int32  level       = 5;
+  bool   is_class_skill = 6;
+}
+
+message ChipProto {
+  string chip_id    = 1;
+  string name       = 2;
+  string description = 3;
+  int32  rarity     = 4;
+  int32  buy_price  = 5;
+  int32  durability = 6;   // -1 = permanent (represented as -1 at runtime)
+}
+
+message PlayerStateProto {
+  string player_id       = 1;
+  string name            = 2;
+  int32  score           = 3;
+  int32  coins           = 4;
+  int32  mana            = 5;
+  int32  mana_max        = 6;
+  int32  hand_count      = 7;
+  string class_id        = 8;
+  repeated SkillProto skills = 9;
+  repeated ChipProto  chips  = 10;
+  bool   is_ready        = 11;
+  bool   is_ai           = 12;
+  bool   is_connected    = 13;
+}
+
+message CombatStateProto {
+  repeated PlayerStateProto players    = 1;
+  string  current_player_id            = 2;
+  HandProto last_hand                  = 3;
+  string  last_hand_player_id          = 4;
+  int32   fatigue_counter              = 5;
+  int32   round_number                 = 6;
+}
+
+message ShopItem {
+  string item_id      = 1;
+  string item_type    = 2;  // chip / skill / card_pack / enchant_pack / delete_pack
+  string name         = 3;
+  string description  = 4;
+  int32  price        = 5;
+  int32  rarity       = 6;
+  bool   reserved     = 7;
+}
+
+message ShopStateProto {
+  repeated ShopItem items    = 1;
+  int32   refresh_cost       = 2;
+  int32   player_coins       = 3;
+  repeated SkillProto owned_skills = 4;
+  repeated ChipProto  owned_chips  = 5;
+}
+
+message RewardItem {
+  string item_id     = 1;
+  string item_type   = 2;
+  string name        = 3;
+  string description = 4;
+}
+
+message RewardStateProto {
+  repeated RewardItem items = 1;
+  int32 picks_allowed       = 2;  // 0 = take all
+}
+
+message RoundResult {
+  string winner_id               = 1;
+  repeated string player_ids     = 2;
+  repeated int32  remaining_cards = 3;
+  repeated int32  score_delta    = 4;
+  repeated int32  coin_delta     = 5;
+  repeated int32  total_scores   = 6;
+}
+
+message GameResult {
+  repeated string player_ids    = 1;
+  repeated int32  total_scores  = 2;
+  repeated string player_names  = 3;
+}
+
+// ─── Client → Server requests ──────────────────────────────────────────────
+
+message ClientMessage {
+  string player_id   = 1;
+  PlayerAction action = 2;
+
+  oneof payload {
+    HandProto       play_hand     = 3;
+    string          skill_id      = 4;
+    string          buy_item_id   = 5;
+    string          sell_item_id  = 6;
+    string          reserve_id    = 7;
+    string          class_id      = 8;
+    bool            refresh_shop  = 9;
+    string          confirm       = 10;
+  }
+}
+
+// ─── Server → Client events ────────────────────────────────────────────────
+
+message ServerEvent {
+  oneof event {
+    LobbyEvent       lobby        = 1;
+    ClassSelectEvent class_select = 2;
+    CombatEvent      combat       = 3;
+    ShopEvent        shop         = 4;
+    RewardEvent      reward       = 5;
+    ResultEvent      result       = 6;
+    GameOverEvent    game_over    = 7;
+    LogEvent         log          = 8;
+    ErrorEvent       error        = 9;
+  }
+}
+
+message LobbyEvent {
+  repeated PlayerStateProto players = 1;
+  string room_config                = 2;  // JSON blob
+}
+
+message ClassSelectEvent {
+  repeated string available_classes = 1;
+  bool all_confirmed                = 2;
+  repeated string confirmed_ids     = 3;  // player ids who confirmed
+}
+
+message CombatEvent {
+  CombatStateProto state = 1;
+  string event_type      = 2;  // turn_start / hand_played / pass / skill_used / round_end
+  repeated CardProto visible_cards = 3;
+}
+
+message ShopEvent {
+  ShopStateProto state = 1;
+}
+
+message RewardEvent {
+  RewardStateProto state = 1;
+}
+
+message ResultEvent {
+  RoundResult result = 1;
+}
+
+message GameOverEvent {
+  GameResult result = 1;
+}
+
+message LogEvent {
+  string message  = 1;
+  bool   important = 2;
+}
+
+message ErrorEvent {
+  string message = 1;
+}
+
+// ─── Join / Handshake ──────────────────────────────────────────────────────
+
+message JoinRequest {
+  string name       = 1;
+  string player_id  = 2;  // empty for new join, filled for reconnect
+}
+
+message JoinResponse {
+  bool   success    = 1;
+  string player_id  = 2;
+  string message    = 3;
+}
+
+// ─── Service ──────────────────────────────────────────────────────────────
+
+service PokerService {
+  rpc Join (JoinRequest) returns (JoinResponse);
+  rpc Play (stream ClientMessage) returns (stream ServerEvent);
+}
